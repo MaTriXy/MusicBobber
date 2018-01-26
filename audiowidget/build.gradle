@@ -3,13 +3,13 @@ apply plugin: 'me.tatarka.retrolambda'
 
 android {
     compileSdkVersion 23
-    buildToolsVersion "23.0.2"
+    buildToolsVersion "23.0.3"
 
     defaultConfig {
         minSdkVersion 12
-        targetSdkVersion 23
-        versionCode 1
-        versionName "1.0"
+        targetSdkVersion 24
+        versionCode 10
+        versionName "1.0.0"
     }
     buildTypes {
         release {
@@ -26,8 +26,15 @@ android {
 
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
+
+    //versions
+    final SUPPORT_LIB_VERSION = '24.2.0'
+
     testCompile 'junit:junit:4.12'
-    compile 'com.android.support:appcompat-v7:23.3.0'
+    //noinspection GradleCompatible
+    compile "com.android.support:appcompat-v7:$SUPPORT_LIB_VERSION"
+    //noinspection GradleCompatible
+    compile "com.android.support:palette-v7:$SUPPORT_LIB_VERSION"
 }
 
 apply from: './gradle-mvn-push.gradle'

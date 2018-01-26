@@ -1,6 +1,7 @@
 package com.cleveroad.audiowidget;
 
 import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -16,6 +17,7 @@ import android.os.Vibrator;
 import android.support.annotation.ColorInt;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.support.v4.content.ContextCompat;
 import android.view.Gravity;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
@@ -23,7 +25,10 @@ import android.view.View;
 import android.view.WindowManager;
 import android.view.animation.AccelerateDecelerateInterpolator;
 
+import java.lang.ref.WeakReference;
+import java.util.Map;
 import java.util.Random;
+import java.util.WeakHashMap;
 
 /**
  * Audio widget implementation.
@@ -66,6 +71,8 @@ public class AudioWidget {
     private final TouchManager.BoundsChecker ppbToExpBoundsChecker;
     private final TouchManager.BoundsChecker expToPpbBoundsChecker;
 
+    private final Map<Integer, WeakReference<Drawable>> albumCoverCache = new WeakHashMap<>();
+
     /**
      * Bounds of remove widget view. Used for checking if play/pause button is inside this bounds
      * and ready for removing from screen.
@@ -73,14 +80,15 @@ public class AudioWidget {
     private final RectF removeBounds;
 
     /**
-     * Remove widget view Y position (hidden).
+     * Remove widget view X, Y position (hidden).
      */
-    private float hiddenRemWidY;
+    private final Point hiddenRemWidPos;
 
     /**
-     * Remove widget view Y position (visible).
+     * Remove widget view X, Y position (visible).
      */
-    private float visibleRemWidY;
+    private final Point visibleRemWidPos;
+    private int animatedRemBtnYPos = -1;
     private float widgetWidth, widgetHeight, radius;
     private final OnControlsClickListenerWrapper onControlsClickListener;
     private boolean shown;
@@ -95,6 +103,8 @@ public class AudioWidget {
         this.handler = new Handler();
         this.screenSize = new Point();
         this.removeBounds = new RectF();
+        this.hiddenRemWidPos = new Point();
+        this.visibleRemWidPos = new Point();
         this.controller = newController();
         this.windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB_MR2) {
@@ -131,7 +141,11 @@ public class AudioWidget {
             public void onWidgetStateChanged(@NonNull State state) {
                 if (state == State.COLLAPSED) {
                     playPauseButton.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-                    windowManager.removeView(expandCollapseWidget);
+                    try {
+                        windowManager.removeView(expandCollapseWidget);
+                    } catch (IllegalArgumentException e) {
+                        // view not attached to window
+                    }
                     playPauseButton.enableProgressChanges(true);
                 }
                 if (onWidgetStateChangedListener != null) {
@@ -162,20 +176,20 @@ public class AudioWidget {
      * @return new configuration for widget
      */
     private Configuration prepareConfiguration(@NonNull Builder builder) {
-        int darkColor = builder.darkColorSet ? builder.darkColor : VersionUtil.color(context, R.color.aw_dark);
-        int lightColor = builder.lightColorSet ? builder.lightColor : VersionUtil.color(context, R.color.aw_light);
-        int progressColor = builder.progressColorSet ? builder.progressColor : VersionUtil.color(context, R.color.aw_progress);
-        int expandColor = builder.expandWidgetColorSet ? builder.expandWidgetColor : VersionUtil.color(context, R.color.aw_expanded);
-        int crossColor = builder.crossColorSet ? builder.crossColor : VersionUtil.color(context, R.color.aw_cross_default);
-        int crossOverlappedColor = builder.crossOverlappedColorSet ? builder.crossOverlappedColor : VersionUtil.color(context, R.color.aw_cross_overlapped);
-        int shadowColor = builder.shadowColorSet ? builder.shadowColor : VersionUtil.color(context, R.color.aw_shadow);
+        int darkColor = builder.darkColorSet ? builder.darkColor : ContextCompat.getColor(context, R.color.aw_dark);
+        int lightColor = builder.lightColorSet ? builder.lightColor : ContextCompat.getColor(context, R.color.aw_light);
+        int progressColor = builder.progressColorSet ? builder.progressColor : ContextCompat.getColor(context, R.color.aw_progress);
+        int expandColor = builder.expandWidgetColorSet ? builder.expandWidgetColor : ContextCompat.getColor(context, R.color.aw_expanded);
+        int crossColor = builder.crossColorSet ? builder.crossColor : ContextCompat.getColor(context, R.color.aw_cross_default);
+        int crossOverlappedColor = builder.crossOverlappedColorSet ? builder.crossOverlappedColor : ContextCompat.getColor(context, R.color.aw_cross_overlapped);
+        int shadowColor = builder.shadowColorSet ? builder.shadowColor : ContextCompat.getColor(context, R.color.aw_shadow);
 
-        Drawable playDrawable = builder.playDrawable != null ? builder.playDrawable : VersionUtil.drawable(context, R.drawable.aw_ic_play);
-        Drawable pauseDrawable = builder.pauseDrawable != null ? builder.pauseDrawable : VersionUtil.drawable(context, R.drawable.aw_ic_pause);
-        Drawable prevDrawable = builder.prevDrawable != null ? builder.prevDrawable : VersionUtil.drawable(context, R.drawable.aw_ic_prev);
-        Drawable nextDrawable = builder.nextDrawable != null ? builder.nextDrawable : VersionUtil.drawable(context, R.drawable.aw_ic_next);
-        Drawable playlistDrawable = builder.playlistDrawable != null ? builder.playlistDrawable : VersionUtil.drawable(context, R.drawable.aw_ic_playlist);
-        Drawable albumDrawable = builder.defaultAlbumDrawable != null ? builder.defaultAlbumDrawable : VersionUtil.drawable(context, R.drawable.aw_ic_default_album);
+        Drawable playDrawable = builder.playDrawable != null ? builder.playDrawable : ContextCompat.getDrawable(context, R.drawable.aw_ic_play);
+        Drawable pauseDrawable = builder.pauseDrawable != null ? builder.pauseDrawable : ContextCompat.getDrawable(context, R.drawable.aw_ic_pause);
+        Drawable prevDrawable = builder.prevDrawable != null ? builder.prevDrawable : ContextCompat.getDrawable(context, R.drawable.aw_ic_prev);
+        Drawable nextDrawable = builder.nextDrawable != null ? builder.nextDrawable : ContextCompat.getDrawable(context, R.drawable.aw_ic_next);
+        Drawable playlistDrawable = builder.playlistDrawable != null ? builder.playlistDrawable : ContextCompat.getDrawable(context, R.drawable.aw_ic_playlist);
+        Drawable albumDrawable = builder.defaultAlbumDrawable != null ? builder.defaultAlbumDrawable : ContextCompat.getDrawable(context, R.drawable.aw_ic_default_album);
 
         int buttonPadding = builder.buttonPaddingSet ? builder.buttonPadding : context.getResources().getDimensionPixelSize(R.dimen.aw_button_padding);
         float crossStrokeWidth = builder.crossStrokeWidthSet ? builder.crossStrokeWidth : context.getResources().getDimension(R.dimen.aw_cross_stroke_width);
@@ -318,14 +332,30 @@ public class AudioWidget {
             @Override
             public void albumCover(@Nullable Drawable albumCover) {
                 expandCollapseWidget.albumCover(albumCover);
+                playPauseButton.albumCover(albumCover);
             }
 
             @Override
             public void albumCoverBitmap(@Nullable Bitmap bitmap) {
-                if (bitmap == null)
+                if (bitmap == null) {
                     expandCollapseWidget.albumCover(null);
-                else
-                    expandCollapseWidget.albumCover(new BitmapDrawable(context.getResources(), bitmap));
+                    playPauseButton.albumCover(null);
+                } else {
+                    WeakReference<Drawable> wrDrawable = albumCoverCache.get(bitmap.hashCode());
+                    if(wrDrawable != null) {
+                        Drawable drawable = wrDrawable.get();
+                        if(drawable != null) {
+                            expandCollapseWidget.albumCover(drawable);
+                            playPauseButton.albumCover(drawable);
+                            return;
+                        }
+                    }
+
+                    Drawable albumCover = new BitmapDrawable(context.getResources(), bitmap);
+                    expandCollapseWidget.albumCover(albumCover);
+                    playPauseButton.albumCover(albumCover);
+                    albumCoverCache.put(bitmap.hashCode(), new WeakReference<>(albumCover));
+                }
             }
         };
     }
@@ -341,11 +371,11 @@ public class AudioWidget {
             return;
         }
         shown = true;
-        float remWidX = screenSize.x / 2 - radius;
-        hiddenRemWidY = screenSize.y + widgetHeight + navigationBarHeight();
-        visibleRemWidY = screenSize.y - radius - (hasNavigationBar() ? 0 : widgetHeight);
+        float remWidX = screenSize.x / 2f - radius * RemoveWidgetView.SCALE_LARGE;
+        hiddenRemWidPos.set((int)remWidX, (int) (screenSize.y + widgetHeight + navigationBarHeight()));
+        visibleRemWidPos.set((int)remWidX, (int) (screenSize.y - radius - (hasNavigationBar() ? 0 : widgetHeight)));
         try {
-            show(removeWidgetView, (int) remWidX, (int) hiddenRemWidY);
+            show(removeWidgetView, hiddenRemWidPos.x, hiddenRemWidPos.y);
         } catch (IllegalArgumentException e) {
             // widget not removed yet, animation in progress
         }
@@ -366,9 +396,17 @@ public class AudioWidget {
         }
         shown = false;
         released = true;
-        windowManager.removeView(playPauseButton);
+        try {
+            windowManager.removeView(playPauseButton);
+        } catch (IllegalArgumentException e) {
+            // view not attached to window
+        }
         if (byPublic) {
-            windowManager.removeView(removeWidgetView);
+            try {
+                windowManager.removeView(removeWidgetView);
+            } catch (IllegalArgumentException e) {
+                // view not attached to window
+            }
         }
         try {
             windowManager.removeView(expandCollapseWidget);
@@ -390,22 +428,25 @@ public class AudioWidget {
     }
 
     public void expand() {
+        removeWidgetShown = false;
         playPauseButton.enableProgressChanges(false);
         playPauseButton.postDelayed(this::checkSpaceAndShowExpanded, PlayPauseButton.PROGRESS_CHANGES_DURATION);
     }
 
     public void collapse() {
+        expandCollapseWidget.setCollapseListener(playPauseButton::setAlpha);
+
         WindowManager.LayoutParams params = (WindowManager.LayoutParams) expandCollapseWidget.getLayoutParams();
-        if (params.x < widgetHeight && expandCollapseWidget.expandDirection() == ExpandCollapseWidget.DIRECTION_LEFT) { // stick on the left side.
-            expandCollapseWidget.expandDirection(ExpandCollapseWidget.DIRECTION_RIGHT);
-            updatePlayPauseButtonPosition();
-        } else if (Math.abs(params.x + widgetWidth - screenSize.x) <= widgetHeight && expandCollapseWidget.expandDirection() == ExpandCollapseWidget.DIRECTION_RIGHT) {
+        int cx = params.x + expandCollapseWidget.getWidth() / 2;
+        if(cx > screenSize.x / 2) {
             expandCollapseWidget.expandDirection(ExpandCollapseWidget.DIRECTION_LEFT);
-            updatePlayPauseButtonPosition();
+        } else {
+            expandCollapseWidget.expandDirection(ExpandCollapseWidget.DIRECTION_RIGHT);
         }
+        updatePlayPauseButtonPosition();
         if (expandCollapseWidget.collapse()) {
             playPauseButtonManager.animateToBounds();
-            expandedWidgetManager.animateToBounds(expToPpbBoundsChecker);
+            expandedWidgetManager.animateToBounds(expToPpbBoundsChecker, null);
         }
     }
 
@@ -418,7 +459,11 @@ public class AudioWidget {
             params.x = (int) (widgetParams.x + widgetWidth - widgetHeight - radius);
         }
         params.y = widgetParams.y;
-        windowManager.updateViewLayout(playPauseButton, params);
+        try {
+            windowManager.updateViewLayout(playPauseButton, params);
+        } catch (IllegalArgumentException e) {
+            // view not attached to window
+        }
         if (onWidgetStateChangedListener != null) {
             onWidgetStateChangedListener.onWidgetPositionChanged((int) (params.x + widgetHeight), (int) (params.y + widgetHeight));
         }
@@ -435,16 +480,22 @@ public class AudioWidget {
         } else {
             expandDirection = ExpandCollapseWidget.DIRECTION_RIGHT;
         }
-        if (expandDirection == ExpandCollapseWidget.DIRECTION_LEFT) {
-            x -= widgetWidth - widgetHeight * 1.5f;
-        } else {
-            x += widgetHeight / 2f;
-        }
-        show(expandCollapseWidget, x, y);
-        playPauseButton.setLayerType(View.LAYER_TYPE_NONE, null);
-        expandCollapseWidget.expand(expandDirection);
-        expandedWidgetManager.animateToBounds();
-        playPauseButtonManager.animateToBounds(ppbToExpBoundsChecker);
+
+        playPauseButtonManager.animateToBounds(ppbToExpBoundsChecker, () -> {
+            WindowManager.LayoutParams params1 = (WindowManager.LayoutParams) playPauseButton.getLayoutParams();
+            int x1 = params1.x;
+            int y1 = params1.y;
+            if (expandDirection == ExpandCollapseWidget.DIRECTION_LEFT) {
+                x1 -= widgetWidth - widgetHeight * 1.5f;
+            } else {
+                x1 += widgetHeight / 2f;
+            }
+            show(expandCollapseWidget, x1, y1);
+            playPauseButton.setLayerType(View.LAYER_TYPE_NONE, null);
+
+            expandCollapseWidget.setExpandListener(percent -> playPauseButton.setAlpha(1f - percent));
+            expandCollapseWidget.expand(expandDirection);
+        });
     }
 
     /**
@@ -513,17 +564,17 @@ public class AudioWidget {
      */
     private class PlayPauseButtonCallback extends TouchManager.SimpleCallback {
 
+        private static final long REMOVE_BTN_ANIM_DURATION = 200;
         private final ValueAnimator.AnimatorUpdateListener animatorUpdateListener;
         private boolean readyToRemove;
 
-        public PlayPauseButtonCallback() {
+        PlayPauseButtonCallback() {
             animatorUpdateListener = animation -> {
-                if (!removeWidgetShown)
+                if (!removeWidgetShown) {
                     return;
-                WindowManager.LayoutParams params = (WindowManager.LayoutParams) removeWidgetView.getLayoutParams();
-                float y = (float) animation.getAnimatedValue();
-                params.y = (int) y;
-                windowManager.updateViewLayout(removeWidgetView, params);
+                }
+                animatedRemBtnYPos = (int)((float) animation.getAnimatedValue());
+                updateRemoveBtnPosition();
             };
         }
 
@@ -548,8 +599,8 @@ public class AudioWidget {
             handler.postDelayed(() -> {
                 if (!released) {
                     removeWidgetShown = true;
-                    ValueAnimator animator = ValueAnimator.ofFloat(hiddenRemWidY, visibleRemWidY);
-                    animator.setDuration(200);
+                    ValueAnimator animator = ValueAnimator.ofFloat(hiddenRemWidPos.y, visibleRemWidPos.y);
+                    animator.setDuration(REMOVE_BTN_ANIM_DURATION);
                     animator.addUpdateListener(animatorUpdateListener);
                     animator.start();
                 }
@@ -568,6 +619,39 @@ public class AudioWidget {
                     vibrator.vibrate(VIBRATION_DURATION);
                 }
             }
+            updateRemoveBtnPosition();
+        }
+
+        private void updateRemoveBtnPosition() {
+            if(removeWidgetShown) {
+                WindowManager.LayoutParams playPauseBtnParams = (WindowManager.LayoutParams) playPauseButton.getLayoutParams();
+                WindowManager.LayoutParams removeBtnParams = (WindowManager.LayoutParams) removeWidgetView.getLayoutParams();
+
+                double tgAlpha = (screenSize.x / 2. - playPauseBtnParams.x) / (visibleRemWidPos.y - playPauseBtnParams.y);
+                double rotationDegrees = 360 - Math.toDegrees(Math.atan(tgAlpha));
+
+                float distance = (float) Math.sqrt(Math.pow(animatedRemBtnYPos - playPauseBtnParams.y, 2) +
+                        Math.pow(visibleRemWidPos.x - hiddenRemWidPos.x, 2));
+                float maxDistance = (float) Math.sqrt(Math.pow(screenSize.x, 2) + Math.pow(screenSize.y, 2));
+                distance /= maxDistance;
+
+                if (animatedRemBtnYPos == -1) {
+                    animatedRemBtnYPos = visibleRemWidPos.y;
+                }
+
+                removeBtnParams.x = (int) DrawableUtils.rotateX(
+                        visibleRemWidPos.x, animatedRemBtnYPos - radius * distance,
+                        hiddenRemWidPos.x, animatedRemBtnYPos, (float) rotationDegrees);
+                removeBtnParams.y = (int) DrawableUtils.rotateY(
+                        visibleRemWidPos.x, animatedRemBtnYPos - radius * distance,
+                        hiddenRemWidPos.x, animatedRemBtnYPos, (float) rotationDegrees);
+
+                try {
+                    windowManager.updateViewLayout(removeWidgetView, removeBtnParams);
+                } catch (IllegalArgumentException e) {
+                    // view not attached to window
+                }
+            }
         }
 
         @Override
@@ -576,16 +660,20 @@ public class AudioWidget {
             playPauseButton.onTouchUp();
             released = true;
             if (removeWidgetShown) {
-                ValueAnimator animator = ValueAnimator.ofFloat(visibleRemWidY, hiddenRemWidY);
-                animator.setDuration(200);
+                ValueAnimator animator = ValueAnimator.ofFloat(visibleRemWidPos.y, hiddenRemWidPos.y);
+                animator.setDuration(REMOVE_BTN_ANIM_DURATION);
                 animator.addUpdateListener(animatorUpdateListener);
-                animator.addListener(new SimpleAnimatorListener() {
+                animator.addListener(new AnimatorListenerAdapter() {
 
                     @Override
                     public void onAnimationEnd(Animator animation) {
                         removeWidgetShown = false;
                         if (!shown) {
-                            windowManager.removeView(removeWidgetView);
+                            try {
+                                windowManager.removeView(removeWidgetView);
+                            } catch (IllegalArgumentException e) {
+                                // view not attached to window
+                            }
                         }
                     }
                 });
@@ -639,12 +727,21 @@ public class AudioWidget {
 
         @Override
         public void onClick(float x, float y) {
+            super.onClick(x, y);
             expandCollapseWidget.onClick(x, y);
         }
 
         @Override
+        public void onLongClick(float x, float y) {
+            super.onLongClick(x, y);
+            expandCollapseWidget.onLongClick(x, y);
+        }
+
+        @Override
         public void onTouchOutside() {
-            collapse();
+            if(!expandCollapseWidget.isAnimationInProgress()) {
+                collapse();
+            }
         }
 
         @Override
@@ -671,11 +768,18 @@ public class AudioWidget {
 
         @Override
         public boolean onPlaylistClicked() {
-            if (onControlsClickListener == null || onControlsClickListener.onPlaylistClicked()) {
+            if (onControlsClickListener == null || !onControlsClickListener.onPlaylistClicked()) {
                 collapse();
                 return true;
             }
             return false;
+        }
+
+        @Override
+        public void onPlaylistLongClicked() {
+            if (onControlsClickListener != null) {
+                onControlsClickListener.onPlaylistLongClicked();
+            }
         }
 
         @Override
@@ -686,8 +790,15 @@ public class AudioWidget {
         }
 
         @Override
+        public void onPreviousLongClicked() {
+            if (onControlsClickListener != null) {
+                onControlsClickListener.onPreviousLongClicked();
+            }
+        }
+
+        @Override
         public boolean onPlayPauseClicked() {
-            if (onControlsClickListener == null || onControlsClickListener.onPlayPauseClicked()) {
+            if (onControlsClickListener == null || !onControlsClickListener.onPlayPauseClicked()) {
                 if (playbackState.state() != Configuration.STATE_PLAYING) {
                     playbackState.start(AudioWidget.this);
                 } else {
@@ -699,6 +810,13 @@ public class AudioWidget {
         }
 
         @Override
+        public void onPlayPauseLongClicked() {
+            if (onControlsClickListener != null) {
+                onControlsClickListener.onPlayPauseLongClicked();
+            }
+        }
+
+        @Override
         public void onNextClicked() {
             if (onControlsClickListener != null) {
                 onControlsClickListener.onNextClicked();
@@ -706,9 +824,23 @@ public class AudioWidget {
         }
 
         @Override
+        public void onNextLongClicked() {
+            if (onControlsClickListener != null) {
+                onControlsClickListener.onNextLongClicked();
+            }
+        }
+
+        @Override
         public void onAlbumClicked() {
             if (onControlsClickListener != null) {
                 onControlsClickListener.onAlbumClicked();
+            }
+        }
+
+        @Override
+        public void onAlbumLongClicked() {
+            if (onControlsClickListener != null) {
+                onControlsClickListener.onAlbumLongClicked();
             }
         }
     }
@@ -1147,9 +1279,14 @@ public class AudioWidget {
 
         /**
          * Called when playlist button clicked.
-         * @return true to collapse widget, false otherwise
+         * @return true if you consume the action, false to use default behavior (collapse widget)
          */
         boolean onPlaylistClicked();
+
+        /**
+         * Called when playlist button long clicked.
+         */
+        void onPlaylistLongClicked();
 
         /**
          * Called when previous track button clicked.
@@ -1157,9 +1294,20 @@ public class AudioWidget {
         void onPreviousClicked();
 
         /**
+         * Called when previous track button long clicked.
+         */
+        void onPreviousLongClicked();
+
+        /**
          * Called when play/pause button clicked.
+         * @return true if you consume the action, false to use default behavior (change play/pause state)
          */
         boolean onPlayPauseClicked();
+
+        /**
+         * Called when play/pause button long clicked.
+         */
+        void onPlayPauseLongClicked();
 
         /**
          * Called when next track button clicked.
@@ -1167,9 +1315,19 @@ public class AudioWidget {
         void onNextClicked();
 
         /**
+         * Called when next track button long clicked.
+         */
+        void onNextLongClicked();
+
+        /**
          * Called when album icon clicked.
          */
         void onAlbumClicked();
+
+        /**
+         * Called when album icon long clicked.
+         */
+        void onAlbumLongClicked();
     }
 
     /**
