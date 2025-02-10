@@ -12,11 +12,12 @@ import android.graphics.RectF;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.AsyncTask;
-import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
-import android.support.v7.graphics.Palette;
 import android.view.animation.LinearInterpolator;
 import android.widget.ImageView;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.palette.graphics.Palette;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -25,7 +26,7 @@ import java.util.Random;
 /**
  * Collapsed state view.
  */
-@SuppressLint("ViewConstructor")
+@SuppressLint({"ViewConstructor", "AppCompatCustomView"})
 class PlayPauseButton extends ImageView implements PlaybackState.PlaybackStateListener {
 
 	private static final float BUBBLES_ANGLE_STEP = 18.0f;
